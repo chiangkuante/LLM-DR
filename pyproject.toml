@@ -1,0 +1,36 @@
+[project]
+name = "llm-digital-resilience"
+version = "0.1.0"
+description = "LLM Digital Resilience Quantification System - 企業數位韌性量化系統"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "streamlit>=1.28.0",
+    "pandas>=2.0.0",
+    "beautifulsoup4>=4.12.0",
+    "lxml>=4.9.0",
+    "tqdm>=4.66.0",
+    "plotly>=5.17.0",
+    "langchain>=0.1.0",
+    "llama-cpp-python[cuda]>=0.2.0",
+    "jupyter>=1.0.0",
+    "numpy>=1.24.0",
+]
+
+[project.optional-dependencies]
+cuda = [
+    "llama-cpp-python[cuda]>=0.2.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.uv]
+dev-dependencies = [
+    "ipython>=8.12.0",
+    "black>=23.0.0",
+]
