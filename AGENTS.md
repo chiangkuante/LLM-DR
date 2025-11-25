@@ -4,6 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Output rules
 Output language is Traditional Chinese
+Please do not use any emojis; please use plain text.
 
 ## Project Overview
 
@@ -55,18 +56,18 @@ from preprocess import process_html_file
 ### Data Pipeline (3-Phase Architecture)
 
 **Current Status (2025-11-17):**
-- ✅ Phase 0 & 1: Complete (downloader + preprocessing)
-- 🚧 Phase 2: In development (quantification system)
-- 📋 Phase 3: Planned (Streamlit enhancements)
+- Phase 0 & 1: Complete (downloader + preprocessing)
+- Phase 2: In development (quantification system)
+- Phase 3: Planned (Streamlit enhancements)
 
-**Phase 1: Preprocessing** (`preprocess.py` → `src/01_preprocess.py`)
+**Phase 1: Preprocessing** (`preprocess.py` → `src/preprocess.py`)
 - Input: Raw HTML from `data/10k_raw/`
 - Output: Cleaned JSON in `data/10k_cleaned/`
 - Extracts: Item 1, 1A, 1C, 7, 7A, 9A + Cybersecurity/InfoSec/ESG sections
 - Uses BeautifulSoup + regex patterns to identify and extract sections
 - **Critical**: Regex patterns avoid false positives (e.g., Item 10/12 vs Item 1)
 
-**Phase 2: Quantification** (`src/02_quantify.py` - TO BE BUILT)
+**Phase 2: Quantification** (`src/quantify.py` - TO BE BUILT)
 - **Key Architecture Change**: NO TEXT CHUNKING
 - Processes entire annual reports in one pass (利用 128K context window)
 - Multi-Agent System:
@@ -100,16 +101,28 @@ project_root/
 │   ├── 00_downloader.ipynb
 │   ├── 01_preprocess.ipynb
 │   └── 02_quantify.ipynb              # TODO
-├── src/                                # Core modules (TODO: restructure)
+├── src/                                # Core modules
 │   ├── __init__.py
-│   ├── 00_downloader.py
-│   ├── 01_preprocess.py
-│   ├── 02_quantify.py                 # TODO
+│   ├── apps/
+│   │   └── streamlit_app.py
+│   ├── tools/
+│   │   ├── filter_companies.py
+│   │   ├── hg_downloader.py
+│   │   └── sec_edgar_cli.py
+│   ├── downloader.py
+│   ├── preprocess.py
+│   ├── quantify.py                    # TODO: Phase 2 ongoing
+│   ├── quantify_v1.py                 # Legacy two-stage scoring
+│   ├── quantify_v2_backup.py
 │   └── utils.py                       # Logging, config
-└── app.py                             # Streamlit entry point (TODO)
+├── tests/
+│   ├── test_quick_score.py
+│   ├── test_quick_scoring_standalone.py
+│   └── test_reasoning_suppression.py
+└── app.py                             # Streamlit entry point (delegates to src apps)
 ```
 
-**Current State**: Files are in root directory, need migration to `src/`
+**Current State**: 核心模組已移至 `src/`（apps、tools、pipeline 模組），請持續在該目錄內擴充。
 
 ### Critical Implementation Notes
 
@@ -127,7 +140,7 @@ temperature=0.1-0.3  # Low for consistent scoring
 
 #### Path Handling
 - **Always use `pathlib.Path`** for cross-platform compatibility
-- Fixed paths in `preprocess.py`:
+- Fixed paths in `src/preprocess.py`:
   - `IN_ROOT = Path("data/10k_raw").resolve()`
   - `OUT_DIR = Path("data/10k_cleaned").resolve()`
 

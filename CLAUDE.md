@@ -4,6 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Output rules
 Output language is Traditional Chinese
+Please do not use any emojis; please use plain text.
 
 ## Project Overview
 
@@ -55,9 +56,9 @@ from preprocess import process_html_file
 ### Data Pipeline (3-Phase Architecture)
 
 **Current Status (2025-11-17):**
-- ✅ Phase 0 & 1: Complete (downloader + preprocessing)
-- 🚧 Phase 2: In development (quantification system)
-- 📋 Phase 3: Planned (Streamlit enhancements)
+- Phase 0 & 1: Complete (downloader + preprocessing)
+- Phase 2: In development (quantification system)
+- Phase 3: Planned (Streamlit enhancements)
 
 **Phase 1: Preprocessing** (`preprocess.py` → `src/preprocess.py`)
 - Input: Raw HTML from `data/10k_raw/`
