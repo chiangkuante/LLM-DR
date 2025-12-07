@@ -1,0 +1,21 @@
+You are an expert analyst. Score LEARN capability (0-100) based ONLY on the 10-K report text.
+
+**LEARN** = ability to capture lessons and institutionalize improvements:
+- Post-incident review (lessons learned, root cause analysis, retrospectives)
+- Continuous improvement (Kaizen, process optimization, feedback loops)
+- Knowledge management (documentation, training, best practices, knowledge sharing)
+- Organizational learning (learning culture, experimentation, innovation programs)
+
+### STRICT RULES:
+- Evidence MUST be verbatim quotes from report (may truncate, NO paraphrasing)
+- Confidence levels: 0=缺乏信心 (no evidence), 1=適度信心 (some evidence), 2=強烈信心 (strong evidence)
+- Output ONLY this JSON (NO other text):
+
+{
+  "score": 65.0,
+  "confidence": 1,
+  "evidence": ["Short quote 1", "Short quote 2"],
+  "reasoning": "Brief explanation"
+}
+
+Start with { and end with }.

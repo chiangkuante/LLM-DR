@@ -22,7 +22,7 @@ except ImportError:
         "llama-cpp-python 未安裝。請執行: uv pip install llama-cpp-python"
     )
 
-from utils import setup_logger, Config
+from .utils import setup_logger, Config
 
 logger = setup_logger(__name__)
 
@@ -253,137 +253,29 @@ class LLMWrapper:
 # 六個韌性能力的 System Prompts
 # --------------------------------
 
-SYSTEM_PROMPT_ABSORB = """You are an expert analyst. Score ABSORB capability (0-100) based ONLY on the 10-K report text.
+def load_prompt(name: str) -> str:
+    """從 src/prompts 載入 System Prompt"""
+    try:
+        prompt_path = Config.PROJECT_ROOT / "src" / "prompts" / f"{name}.txt"
+        if not prompt_path.exists():
+            logger.error(f"Prompt 檔案不存在: {prompt_path}")
+            return ""
+        return prompt_path.read_text(encoding="utf-8").strip()
+    except Exception as e:
+        logger.error(f"載入 Prompt {name} 失敗: {e}")
+        return ""
 
-**ABSORB** = ability to withstand and minimize initial disruption impact:
-- Redundancy (backup systems, spare capacity, duplicate resources)
-- Robustness (strong defenses, security controls, fault-tolerance)
-- Resource buffers (inventory reserves, financial reserves, backup suppliers)
-- Protection mechanisms (firewalls, encryption, access controls)
+SYSTEM_PROMPT_ABSORB = load_prompt("absorb")
 
-### STRICT RULES:
-- Evidence MUST be verbatim quotes from report (may truncate, NO paraphrasing)
-- Confidence levels: 0=缺乏信心 (no evidence), 1=適度信心 (some evidence), 2=強烈信心 (strong evidence)
-- Output ONLY this JSON (NO other text):
+SYSTEM_PROMPT_ADOPT = load_prompt("adopt")
 
-{
-  "score": 75.0,
-  "confidence": 1,
-  "evidence": ["Short quote 1", "Short quote 2"],
-  "reasoning": "Brief explanation"
-}
+SYSTEM_PROMPT_TRANSFORM = load_prompt("transform")
 
-Start with { and end with }."""
+SYSTEM_PROMPT_ANTICIPATE = load_prompt("anticipate")
 
-SYSTEM_PROMPT_ADOPT = """You are an expert analyst. Score ADOPT capability (0-100) based ONLY on the 10-K report text.
+SYSTEM_PROMPT_REBOUND = load_prompt("rebound")
 
-**ADOPT** = ability to adjust structures/processes during disruptions:
-- Operational flexibility (process adjustments, workflow changes, pivots)
-- Resource reallocation (shifting budgets, redeploying staff)
-- Alternative channels (new distribution, digital pivots, remote work)
-- Incremental adaptation (quick fixes, workarounds, agile responses)
-
-### STRICT RULES:
-- Evidence MUST be verbatim quotes from report (may truncate, NO paraphrasing)
-- Confidence levels: 0=缺乏信心 (no evidence), 1=適度信心 (some evidence), 2=強烈信心 (strong evidence)
-- Output ONLY this JSON (NO other text):
-
-{
-  "score": 70.0,
-  "confidence": 1,
-  "evidence": ["Short quote 1", "Short quote 2"],
-  "reasoning": "Brief explanation"
-}
-
-Start with { and end with }."""
-
-SYSTEM_PROMPT_TRANSFORM = """You are an expert analyst. Score TRANSFORM capability (0-100) based ONLY on the 10-K report text.
-
-**TRANSFORM** = ability to fundamentally redesign after major disruptions:
-- Strategic transformation (business model changes, major pivots)
-- Innovation and R&D (new products, new markets, new technologies)
-- Digital transformation (AI, cloud, data platforms, automation)
-- Structural reorganization (M&A, divestitures, major restructuring)
-
-### STRICT RULES:
-- Evidence MUST be verbatim quotes from report (may truncate, NO paraphrasing)
-- Confidence levels: 0=缺乏信心 (no evidence), 1=適度信心 (some evidence), 2=強烈信心 (strong evidence)
-- Output ONLY this JSON (NO other text):
-
-{
-  "score": 80.0,
-  "confidence": 2,
-  "evidence": ["Short quote 1", "Short quote 2"],
-  "reasoning": "Brief explanation"
-}
-
-Start with { and end with }."""
-
-SYSTEM_PROMPT_ANTICIPATE = """You are an expert analyst. Score ANTICIPATE capability (0-100) based ONLY on the 10-K report text.
-
-**ANTICIPATE** = ability to detect early warning signs and predict risks:
-- Risk management (risk identification, assessment, monitoring)
-- Scenario planning (stress testing, contingency planning, forecasting)
-- Threat intelligence (market monitoring, competitive analysis, trend analysis)
-- Early warning systems (KPIs, dashboards, alerts, predictive analytics)
-
-### STRICT RULES:
-- Evidence MUST be verbatim quotes from report (may truncate, NO paraphrasing)
-- Confidence levels: 0=缺乏信心 (no evidence), 1=適度信心 (some evidence), 2=強烈信心 (strong evidence)
-- Output ONLY this JSON (NO other text):
-
-{
-  "score": 75.0,
-  "confidence": 1,
-  "evidence": ["Short quote 1", "Short quote 2"],
-  "reasoning": "Brief explanation"
-}
-
-Start with { and end with }."""
-
-SYSTEM_PROMPT_REBOUND = """You are an expert analyst. Score REBOUND capability (0-100) based ONLY on the 10-K report text.
-
-**REBOUND** = ability to rapidly recover from disruptions:
-- Incident response (IR plans, escalation, coordination)
-- Disaster recovery (DR/BCP, backup/restore, recovery time objectives)
-- Crisis management (crisis teams, communication plans, stakeholder management)
-- Recovery speed (time-to-restore, resilience testing, recovery metrics)
-
-### STRICT RULES:
-- Evidence MUST be verbatim quotes from report (may truncate, NO paraphrasing)
-- Confidence levels: 0=缺乏信心 (no evidence), 1=適度信心 (some evidence), 2=強烈信心 (strong evidence)
-- Output ONLY this JSON (NO other text):
-
-{
-  "score": 70.0,
-  "confidence": 1,
-  "evidence": ["Short quote 1", "Short quote 2"],
-  "reasoning": "Brief explanation"
-}
-
-Start with { and end with }."""
-
-SYSTEM_PROMPT_LEARN = """You are an expert analyst. Score LEARN capability (0-100) based ONLY on the 10-K report text.
-
-**LEARN** = ability to capture lessons and institutionalize improvements:
-- Post-incident review (lessons learned, root cause analysis, retrospectives)
-- Continuous improvement (Kaizen, process optimization, feedback loops)
-- Knowledge management (documentation, training, best practices, knowledge sharing)
-- Organizational learning (learning culture, experimentation, innovation programs)
-
-### STRICT RULES:
-- Evidence MUST be verbatim quotes from report (may truncate, NO paraphrasing)
-- Confidence levels: 0=缺乏信心 (no evidence), 1=適度信心 (some evidence), 2=強烈信心 (strong evidence)
-- Output ONLY this JSON (NO other text):
-
-{
-  "score": 65.0,
-  "confidence": 1,
-  "evidence": ["Short quote 1", "Short quote 2"],
-  "reasoning": "Brief explanation"
-}
-
-Start with { and end with }."""
+SYSTEM_PROMPT_LEARN = load_prompt("learn")
 
 # --------------------------------
 # Helper Functions
