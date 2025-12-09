@@ -1,27 +1,53 @@
-import os
+import argparse
+import logging
+from pathlib import Path
 from huggingface_hub import snapshot_download
 
-# 1. 指定你的模型 ID (以 Llama 3 GGUF 為例)
-repo_id = "unsloth/gpt-oss-20b-GGUF"
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-# 2. 指定你本地的目標資料夾
-# (建議使用絕對路徑，並確保資料夾存在)
-# (這裡使用相對路徑 './my_model_directory' 作為範例)
-target_path = os.path.join(os.getcwd(), "models")
+# Default Configuration per GEMINI.md 
+# DEFAULT_REPO_ID = "unsloth/gpt-oss-20b-GGUF" # Assumed based on file name match, verify if needed
+# DEFAULT_FILENAME = "gpt-oss-20b-Q8_0.gguf"
+DEFAULT_REPO_ID = "unsloth/gemma-3-27b-it-qat-GGUF" # Assumed based on file name match, verify if needed
+DEFAULT_FILENAME = "gemma-3-27b-it-qat-Q2_K_L.gguf"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+DEFAULT_MODEL_DIR = PROJECT_ROOT / "models"
 
-# Ensure the directory exists
-os.makedirs(target_path, exist_ok=True)
+def download_model(repo_id: str, filename: str, model_dir: Path, force: bool = False):
+    """
+    Downloads a specific model file from Hugging Face Hub.
+    """
+    model_dir.mkdir(parents=True, exist_ok=True)
+    target_file = model_dir / filename
+    
+    if target_file.exists() and not force:
+        logger.info(f"Model file already exists at {target_file}. Use --force to overwrite.")
+        return
 
-print(f"準備將模型下載至: {target_path}")
+    logger.info(f"Downloading {filename} from {repo_id} to {model_dir}...")
+    
+    try:
+        downloaded_path = snapshot_download(
+            repo_id=repo_id,
+            local_dir=model_dir,
+            allow_patterns=[filename],
+            local_dir_use_symlinks=False,
+            resume_download=True
+        )
+        logger.info(f"Successfully downloaded to: {downloaded_path}")
+    except Exception as e:
+        logger.error(f"Failed to download model: {e}")
+        raise
 
-# 3. 執行下載
-# 我們也加入了 allow_patterns 只下載 Q4_K_M 版本，避免下載所有檔案
-model_directory = snapshot_download(
-    repo_id=repo_id,
-    local_dir=target_path,  # <-- 關鍵參數
-    allow_patterns="gpt-oss-20b-Q4_0.gguf", # 範例：只抓 Q4_K_M GGUF 檔
-    local_dir_use_symlinks=False # 建議設為 False，直接複製檔案
-)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Download Hugging Face models for LLM-DR")
+    parser.add_argument("--repo_id", type=str, default=DEFAULT_REPO_ID, help="Hugging Face Repository ID")
+    parser.add_argument("--filename", type=str, default=DEFAULT_FILENAME, help="Specific filename GGUF to download")
+    parser.add_argument("--dir", type=Path, default=DEFAULT_MODEL_DIR, help="Directory to save the model")
+    parser.add_argument("--force", action="store_true", help="Force download even if file exists")
 
-print(f"模型檔案已成功下載至: {model_directory}")
-# (注意：這裡返回的 model_directory 就是你傳入的 target_path)
+    args = parser.parse_args()
+
+    download_model(args.repo_id, args.filename, args.dir, args.force)

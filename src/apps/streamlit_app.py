@@ -358,7 +358,11 @@ def main():
                     help="生成評分的最大 token 數"
                 )
 
-            # 檢查是否已有評分
+                enable_reviewer = st.checkbox(
+                    "啟用 Agent 2 (Reviewer)",
+                    value=True,
+                    help="啟用後，Lead Auditor 會檢查 Agent 1 的評分邏輯 (建議啟用)"
+                )
             if selected_companies and selected_years:
                 # 檢查有多少已完成的評分
                 completed_count = 0
@@ -454,7 +458,8 @@ def main():
                                                 wrapper,
                                                 company,
                                                 year,
-                                                report_data
+                                                report_data,
+                                                enable_reviewer=enable_reviewer
                                             )
 
                                         if score:

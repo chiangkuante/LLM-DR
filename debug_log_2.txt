@@ -1,0 +1,156 @@
+warning: The `tool.uv.dev-dependencies` field (used in `pyproject.toml`) is deprecated and will be removed in a future release; use `dependency-groups.dev` instead
+2025-12-09 12:16:11 - __main__ - INFO - === 測試六維度韌性評分 ===
+2025-12-09 12:16:11 - __main__ - INFO - 找到報告: AAPL_10-K_0000320193-24-000123_primary-document.json
+2025-12-09 12:16:11 - __main__ - INFO - === 開始評分: AAPL (2024) ===
+2025-12-09 12:16:11 - __main__ - INFO - 正在載入模型: /home/wa1ter/LLM-DR/models/Mistral-Small-3.2-24B-Instruct-2506-Q4_K_M.gguf
+2025-12-09 12:16:11 - __main__ - INFO - LLM 參數: {'n_ctx': 24576, 'n_gpu_layers': -1, 'n_threads': 25, 'verbose': False}
+llama_context: n_ctx_per_seq (24576) < n_ctx_train (131072) -- the full capacity of the model will not be utilized
+2025-12-09 12:16:13 - __main__ - INFO - ✅ 模型載入成功 (耗時 1.64s)
+2025-12-09 12:16:13 - __main__ - INFO - 🔄 執行 ABSORB Agent
+2025-12-09 12:16:13 - __main__ - INFO - === Absorb Agent 評分: AAPL (2024) ===
+2025-12-09 12:16:13 - __main__ - INFO -   item_1a: 68763 字元
+2025-12-09 12:16:13 - __main__ - INFO -   item_9a: 4500 字元
+2025-12-09 12:16:13 - __main__ - INFO -   item_1c: 2736 字元
+2025-12-09 12:16:13 - __main__ - INFO - ✅ absorb 上下文: 76,056 字元 (~19014 tokens)
+2025-12-09 12:16:13 - __main__ - INFO - ✅ Agent 1 Grammar loaded
+無法解析 JSON. Raw output:
+{"evidence": ["The Company has invested in manufacturing process equipment, much of which is held at certain of its outsourcing partners, and has made prepayments to certain of its suppliers associated with long-term supply agreements. While these arrangements help ensure the supply of components and finished goods, if these outsourcing partners or suppliers experience severe financial problems or other disruptions in their business, such continued supply can be disrupted or terminated, and the recoverability of manufacturing process equipment or prepayments can be negatively impacted.", "The Company has implemented systems and processes intended to secure its information technology systems and prevent unauthorized access to or loss of sensitive data, and mitigate the impact of unauthorized access, including through the use of encryption and other security measures."], "reasoning": "The evidence indicates that Apple has taken steps to ensure the supply of components and finished goods ...
+Validation Failed: JSON Parse Error
+❌ Validation failed for absorb
+無法解析 JSON. Raw output:
+{"evidence": ["The Company has invested in manufacturing process equipment, much of which is held at certain of its outsourcing partners, and has made prepayments to certain of its suppliers associated with long-term supply agreements. While these arrangements help ensure the supply of components and finished goods, if these outsourcing partners or suppliers experience severe financial problems or other disruptions in their business, such continued supply can be disrupted or terminated, and the recoverability of manufacturing process equipment or prepayments can be negatively impacted.", "The Company has implemented systems and processes intended to secure its information technology systems and prevent unauthorized access to or loss of sensitive data, and mitigate the impact of unauthorized access, including through the use of encryption and other security measures."], "reasoning": "The evidence indicates that Apple has taken steps to ensure the supply of components and finished goods ...
+Validation Failed: JSON Parse Error
+❌ Validation failed for absorb
+無法解析 JSON. Raw output:
+{"evidence": ["The Company has implemented systems and processes intended to secure its information technology systems and prevent unauthorized access to or loss of sensitive data, and mitigate the impact of unauthorized access, including through the use of encryption and authentication technologies."], "reasoning": "The evidence indicates that Apple has implemented specific systems and processes to secure its IT infrastructure, which is a concrete practice aimed at mitigating risks related to cybersecurity threats. This aligns with the ABSORB definition as it demonstrates the company's capability to withstand shocks by using digital technologies to maintain stability and continuity of operations.", "score": 3}...
+Validation Failed: JSON Parse Error
+❌ Validation failed for absorb
+Agent1 failed to produce valid JSON for absorb after 3 attempts.
+2025-12-09 12:16:36 - __main__ - INFO - 🔄 KV cache 已清空
+2025-12-09 12:16:36 - __main__ - INFO - 🔄 執行 ADOPT Agent
+2025-12-09 12:16:36 - __main__ - INFO - === Adopt Agent 評分: AAPL (2024) ===
+2025-12-09 12:16:36 - __main__ - INFO -   item_7: 15449 字元
+2025-12-09 12:16:36 - __main__ - INFO -   item_1: 15774 字元
+2025-12-09 12:16:36 - __main__ - INFO -   item_1a: 已截斷至 48722 字元
+2025-12-09 12:16:36 - __main__ - INFO - ✅ adopt 上下文: 80,012 字元 (~20003 tokens)
+無法解析 JSON. Raw output:
+{"evidence": ["The Company’s fiscal year is the 52- or 53-week period that ends on the last Saturday of September. An additional week is included in the first fiscal quarter every five or six years to realign the Company’s fiscal quarters with calendar quarters, which occurred in the first quarter of 2023."], "reasoning": "The evidence indicates that the company has a flexible fiscal year structure that can adjust by adding an extra week to realign with calendar quarters. This demonstrates a capability to adjust its fiscal calendar to better align with external calendar cycles, which is a form of operational flexibility.", "score": 2}...
+Validation Failed: JSON Parse Error
+❌ Validation failed for adopt
+無法解析 JSON. Raw output:
+{"evidence": ["The Company’s fiscal year is the 52- or 53-week period that ends on the last Saturday of September. An additional week is included in the first fiscal quarter every five or six years to realign the Company’s fiscal quarters with calendar quarters, which occurred in the first quarter of 2023."], "reasoning": "The evidence shows that the company has a flexible fiscal year structure that can adjust by adding an extra week to realign with calendar quarters. This demonstrates a capability to adjust its fiscal calendar to better align with external calendar cycles, which is a form of operational flexibility.", "score": 2}...
+Validation Failed: JSON Parse Error
+❌ Validation failed for adopt
+無法解析 JSON. Raw output:
+{"evidence": ["The Company’s fiscal year is the 52- or 53-week period that ends on the last Saturday of September. An additional week is included in the first fiscal quarter every five or six years to realign the Company’s fiscal quarters with calendar quarters, which occurred in the first quarter of 2023."], "reasoning": "The evidence shows that the company has a mechanism to adjust its fiscal year structure to realign with calendar quarters, demonstrating a level of operational flexibility. This is a concrete practice that indicates the ability to adopt adjustments during disruptions.", "score": 2}...
+Validation Failed: JSON Parse Error
+❌ Validation failed for adopt
+Agent1 failed to produce valid JSON for adopt after 3 attempts.
+2025-12-09 12:16:57 - __main__ - INFO - 🔄 KV cache 已清空
+2025-12-09 12:16:57 - __main__ - INFO - 🔄 執行 TRANSFORM Agent
+2025-12-09 12:16:57 - __main__ - INFO - === Transform Agent 評分: AAPL (2024) ===
+2025-12-09 12:16:57 - __main__ - INFO -   item_7: 15449 字元
+2025-12-09 12:16:57 - __main__ - INFO -   item_1: 15774 字元
+2025-12-09 12:16:57 - __main__ - INFO - ✅ transform 上下文: 31,259 字元 (~7815 tokens)
+無法解析 JSON. Raw output:
+{"evidence": ["The Company announces new product, service and software offerings at various times during the year. Significant announcements during fiscal year 2024 included the following: ... Apple IntelligenceTM, a personal intelligence system that uses generative models.", "The Company’s ability to compete successfully depends heavily on ensuring the continuing and timely introduction of innovative new products, services and technologies to the marketplace. The Company designs and develops nearly the entire solution for its products, including the hardware, operating system, numerous software applications and related services.", "The Company continues to develop new technologies to enhance existing products and services, and to expand the range of its offerings through research and development (“R&D”), licensing of intellectual property and acquisition of third-party businesses and technology."], "reasoning": "The evidence shows that Apple consistently introduces new products, servi...
+Validation Failed: JSON Parse Error
+❌ Validation failed for transform
+無法解析 JSON. Raw output:
+{"evidence": ["The Company announces new product, service and software offerings at various times during the year. Significant announcements during fiscal year 2024 included the following: ... Apple IntelligenceTM, a personal intelligence system that uses generative models.", "The Company’s ability to compete successfully depends heavily on ensuring the continuing and timely introduction of innovative new products, services and technologies to the marketplace. The Company designs and develops nearly the entire solution for its products, including the hardware, operating system, numerous software applications and related services.", "The Company continues to develop new technologies to enhance existing products and services, and to expand the range of its offerings through research and development (“R&D”), licensing of intellectual property and acquisition of third-party businesses and technology."], "reasoning": "The evidence shows that Apple actively engages in strategic transformatio...
+Validation Failed: JSON Parse Error
+❌ Validation failed for transform
+無法解析 JSON. Raw output:
+{"evidence": ["The Company announces new product, service and software offerings at various times during the year. Significant announcements during fiscal year 2024 included the following: ... Apple IntelligenceTM, a personal intelligence system that uses generative models.", "The Company’s ability to compete successfully depends heavily on ensuring the continuing and timely introduction of innovative new products, services and technologies to the marketplace. The Company designs and develops nearly the entire solution for its products, including the hardware, operating system, numerous software applications and related services.", "The Company continues to develop new technologies to enhance existing products and services, and to expand the range of its offerings through research and development (“R&D”), licensing of intellectual property and acquisition of third-party businesses and technology."], "reasoning": "The evidence shows that Apple actively engages in strategic transformatio...
+Validation Failed: JSON Parse Error
+❌ Validation failed for transform
+Agent1 failed to produce valid JSON for transform after 3 attempts.
+2025-12-09 12:17:18 - __main__ - INFO - 🔄 KV cache 已清空
+2025-12-09 12:17:18 - __main__ - INFO - 🔄 執行 ANTICIPATE Agent
+2025-12-09 12:17:18 - __main__ - INFO - === Anticipate Agent 評分: AAPL (2024) ===
+2025-12-09 12:17:18 - __main__ - INFO -   item_1a: 68763 字元
+2025-12-09 12:17:18 - __main__ - INFO -   item_1c: 2736 字元
+2025-12-09 12:17:18 - __main__ - INFO -   item_9a: 4500 字元
+2025-12-09 12:17:18 - __main__ - INFO - ✅ anticipate 上下文: 76,056 字元 (~19014 tokens)
+無法解析 JSON. Raw output:
+{"evidence": ["The Company’s Information Security team coordinates with teams across the Company to prevent, respond to and manage security incidents, and engages third parties, as appropriate, to assess, test or otherwise assist with aspects of its security processes and incident response.", "The Company’s enterprise risk management program is designed to identify, assess, and monitor the Company’s business risks, including financial, operational, compliance and reputational risks, and reflects management’s assessment of cybersecurity risks."], "reasoning": "The evidence shows that Apple has a structured approach to risk management, including coordination across teams to prevent and manage security incidents, and an enterprise risk management program that identifies, assesses, and monitors various business risks, including cybersecurity risks. These practices indicate a proactive stance on risk anticipation.", "score": 3}...
+Validation Failed: JSON Parse Error
+❌ Validation failed for anticipate
+無法解析 JSON. Raw output:
+{"evidence": ["The Company’s enterprise risk management program is designed to identify, assess, and monitor the Company’s business risks, including financial, operational, compliance and reputational risks, and reflects management’s assessment of cybersecurity risks."], "reasoning": "The evidence indicates that Apple has a structured enterprise risk management program that systematically identifies, assesses, and monitors various business risks, including cybersecurity risks. This suggests a proactive approach to risk management, which aligns with the ANTICIPATE capability. The mention of ongoing assessment and monitoring reflects a systematic and organization-wide practice, justifying a score of 3.", "score": 3}...
+Validation Failed: JSON Parse Error
+❌ Validation failed for anticipate
+無法解析 JSON. Raw output:
+{"evidence": ["The Company’s enterprise risk management program is designed to identify, assess, and monitor the Company’s business risks, including financial, operational, compliance and reputational risks, and reflects management’s assessment of cybersecurity risks."], "reasoning": "The evidence indicates that Apple has a structured enterprise risk management program that systematically identifies, assesses, and monitors various business risks, including cybersecurity risks. This suggests a proactive approach to risk management, which aligns with the ANTICIPATE capability. However, the evidence is somewhat limited in scope and does not provide detailed examples of specific mechanisms or practices used for early warning or prediction.", "score": 2}...
+Validation Failed: JSON Parse Error
+❌ Validation failed for anticipate
+Agent1 failed to produce valid JSON for anticipate after 3 attempts.
+2025-12-09 12:17:38 - __main__ - INFO - 🔄 KV cache 已清空
+2025-12-09 12:17:38 - __main__ - INFO - 🔄 執行 REBOUND Agent
+2025-12-09 12:17:38 - __main__ - INFO - === Rebound Agent 評分: AAPL (2024) ===
+2025-12-09 12:17:38 - __main__ - INFO -   item_1c: 2736 字元
+2025-12-09 12:17:38 - __main__ - INFO -   item_9a: 4500 字元
+2025-12-09 12:17:38 - __main__ - INFO -   item_7: 15449 字元
+2025-12-09 12:17:38 - __main__ - INFO - ✅ rebound 上下文: 22,741 字元 (~5685 tokens)
+無法解析 JSON. Raw output:
+{"evidence": [], "reasoning": "The provided text sections do not contain any explicit or implicit evidence of the company's rebound capability. There are no mentions of incident response mechanisms, disaster recovery plans, business continuity plans, crisis management protocols, or recovery speed metrics. The text focuses on cybersecurity, financial controls, product performance, and other operational aspects but does not address the company's ability to rapidly recover from disruptions.", "score": 0}...
+Validation Failed: JSON Parse Error
+❌ Validation failed for rebound
+無法解析 JSON. Raw output:
+{"evidence": ["The Company’s Information Security team coordinates with teams across the Company to prevent, respond to and manage security incidents, and engages third parties, as appropriate, to assess, test or otherwise assist with aspects of its security processes and incident response."], "reasoning": "The evidence indicates that Apple has a dedicated Information Security team that coordinates with other teams to respond to and manage security incidents. This suggests a structured approach to incident response, which is a key aspect of rebound capability. However, the evidence is limited to cybersecurity incidents and does not cover broader operational disruptions or recovery processes. Therefore, the score is partial and narrow.", "score": 2}...
+Validation Failed: JSON Parse Error
+❌ Validation failed for rebound
+無法解析 JSON. Raw output:
+{"evidence": ["The Company’s Information Security team coordinates with teams across the Company to prevent, respond to and manage security incidents, and engages third parties, as appropriate, to assess, test or otherwise assist with aspects of its security processes and incident response."], "reasoning": "The evidence indicates that Apple has a structured approach to incident response, including coordination across teams and engagement with third parties. This suggests a systematic and organization-wide capability to manage and recover from security incidents, which aligns with the REBOUND definition of rapid recovery from disruptions.", "score": 3}...
+Validation Failed: JSON Parse Error
+❌ Validation failed for rebound
+Agent1 failed to produce valid JSON for rebound after 3 attempts.
+2025-12-09 12:17:51 - __main__ - INFO - 🔄 KV cache 已清空
+2025-12-09 12:17:51 - __main__ - INFO - 🔄 執行 LEARN Agent
+2025-12-09 12:17:51 - __main__ - INFO - === Learn Agent 評分: AAPL (2024) ===
+2025-12-09 12:17:51 - __main__ - INFO -   item_9a: 4500 字元
+2025-12-09 12:17:51 - __main__ - INFO -   item_1a: 68763 字元
+2025-12-09 12:17:51 - __main__ - INFO - ✅ learn 上下文: 73,301 字元 (~18325 tokens)
+無法解析 JSON. Raw output:
+{"evidence": [], "reasoning": "The provided text sections (Item 9A and Item 1A) focus primarily on risk factors, financial controls, and compliance. There is no explicit mention of post-incident reviews, lessons learned sessions, root cause analyses, retrospectives, continuous improvement (Kaizen), feedback loops, knowledge management systems, or a culture of organizational learning. The text does not discuss institutionalizing improvements based on past experiences.", "score": 0}...
+Validation Failed: JSON Parse Error
+❌ Validation failed for learn
+無法解析 JSON. Raw output:
+{"evidence": [], "reasoning": "The provided text sections (Item 9A and Item 1A) focus on risk factors, internal controls, and financial reporting. There is no explicit mention of post-incident reviews, lessons learned sessions, root cause analyses, retrospectives, continuous improvement (Kaizen), feedback loops, knowledge management systems, or a culture of organizational learning. The text does not discuss institutionalizing improvements based on past experiences.", "score": 0}...
+Validation Failed: JSON Parse Error
+❌ Validation failed for learn
+無法解析 JSON. Raw output:
+{"evidence": [], "reasoning": "The provided text sections (Item 9A and Item 1A) focus primarily on risk factors, financial controls, and compliance-related disclosures. There is no explicit mention of post-incident reviews, lessons learned sessions, root cause analyses, retrospectives, continuous improvement (Kaizen), feedback loops, knowledge management systems, or a culture of organizational learning. The text does not discuss any mechanisms for capturing lessons from past experiences or institutionalizing improvements.", "score": 0}...
+Validation Failed: JSON Parse Error
+❌ Validation failed for learn
+Agent1 failed to produce valid JSON for learn after 3 attempts.
+2025-12-09 12:18:06 - __main__ - INFO - 🔄 KV cache 已清空
+2025-12-09 12:18:06 - __main__ - INFO - 🔄 執行 Reviewer Agent（審核所有評分）
+2025-12-09 12:18:06 - __main__ - INFO - 
+=== 開始評分員審核 (Lead Auditor Batch) ===
+2025-12-09 12:18:06 - __main__ - INFO - ✅ Auditor Grammar loaded
+2025-12-09 12:18:16 - __main__ - INFO -   ABSORB: APPROVED -> 0 (Note: Score remains 0 as no evidence was provided.)
+2025-12-09 12:18:16 - __main__ - INFO -   ADAPT: APPROVED -> 0 (Note: Score remains 0 as no evidence was provided.)
+2025-12-09 12:18:16 - __main__ - INFO -   TRANSFORM: APPROVED -> 0 (Note: Score remains 0 as no evidence was provided.)
+2025-12-09 12:18:16 - __main__ - INFO -   ANTICIPATE: APPROVED -> 0 (Note: Score remains 0 as no evidence was provided.)
+2025-12-09 12:18:16 - __main__ - INFO -   REBOUND: APPROVED -> 0 (Note: Score remains 0 as no evidence was provided.)
+2025-12-09 12:18:16 - __main__ - INFO -   LEARN: APPROVED -> 0 (Note: Score remains 0 as no evidence was provided.)
+2025-12-09 12:18:16 - __main__ - INFO - 模型已卸載
+2025-12-09 12:18:16 - __main__ - INFO - ✅ 評分完成: 0.0/100 (耗時 124.6s)
+2025-12-09 12:18:16 - __main__ - INFO - 
+=== 評分結果 ===
+2025-12-09 12:18:16 - __main__ - INFO - 公司: AAPL (2024)
+2025-12-09 12:18:16 - __main__ - INFO - 整體分數: 0.0/100
+2025-12-09 12:18:16 - __main__ - INFO - 
+六維度分數:
+2025-12-09 12:18:16 - __main__ - INFO -   - Absorb: N/A (評分失敗)
+2025-12-09 12:18:16 - __main__ - INFO -   - Adopt: N/A (評分失敗)
+2025-12-09 12:18:16 - __main__ - INFO -   - Transform: N/A (評分失敗)
+2025-12-09 12:18:16 - __main__ - INFO -   - Anticipate: N/A (評分失敗)
+2025-12-09 12:18:16 - __main__ - INFO -   - Rebound: N/A (評分失敗)
+2025-12-09 12:18:16 - __main__ - INFO -   - Learn: N/A (評分失敗)
+2025-12-09 12:18:16 - __main__ - INFO - 評分已儲存: /home/wa1ter/LLM-DR/data/scores/AAPL_2024_score.json
+2025-12-09 12:18:16 - __main__ - INFO - 
+結果已儲存至: /home/wa1ter/LLM-DR/data/scores/AAPL_2024_score.json
+2025-12-09 12:18:16 - __main__ - INFO - ✅ 評分測試成功
+2025-12-09 12:18:16 - __main__ - INFO - 模型已卸載

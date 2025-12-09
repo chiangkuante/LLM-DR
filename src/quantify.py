@@ -16,33 +16,36 @@ from dataclasses import dataclass, asdict
 import time
 
 try:
-    from llama_cpp import Llama
+    from llama_cpp import Llama, LlamaGrammar
 except ImportError:
     raise ImportError(
         "llama-cpp-python 未安裝。請執行: uv pip install llama-cpp-python"
     )
 
 from .utils import setup_logger, Config
+from .agent_utils import run_agent1_with_retry, parse_json_response
 
 logger = setup_logger(__name__)
 
 # --------------------------------
 # 模型配置
 # --------------------------------
-MODEL_PATH = Config.PROJECT_ROOT / "models" / "gpt-oss-20b-Q4_0.gguf"
+MODEL_PATH = Config.PROJECT_ROOT / "models" / "Mistral-Small-3.2-24B-Instruct-2506-Q4_K_M.gguf"
 
 DEFAULT_LLM_PARAMS = {
-    "n_ctx": 49152,      # 48K context for Q4 model (conservative for 24GB GPU - 80.5% utilization, safer for large prompts)
+    "n_ctx": 32000,      # 48K context for Q4 model (conservative for 24GB GPU - 80.5% utilization, safer for large prompts)
     "n_gpu_layers": -1,
-    "n_threads": 8,
+    "n_threads": 25,
     "verbose": False,
 }
 
 DEFAULT_GEN_PARAMS = {
     "temperature": 0.1,
-    "max_tokens": 1500,
+    "max_tokens": 4096,
     "stop": ["}```", "\n\n\n"],
 }
+
+MAX_TOKENS_PER_AGENT = 27000
 
 # --------------------------------
 # Agent 章節分配配置
@@ -87,43 +90,42 @@ AGENT_SECTION_MAPPING = {
     ],
 }
 
-# 每個 Agent 的最大 token 數（單 Agent 執行模式 - 實用配置）
-# 基於 n_ctx=48K 與單 Agent 執行模式（每次只載入一個 Agent）：
-# - Q4 模型 (~11GB) + 48K context 實測穩定（80.5% GPU 使用率）
-# - 單 Agent 模式：每個 Agent 執行時獨立載入/卸載模型，無 KV cache 累積問題
-# - 實測發現：需預留足夠空間給生成與 CUDA 緩衝
-# - 保守設定 45K 為上限（預留 3K 給生成，確保穩定）
-#
-# 各 Agent 統計（最小/平均/最大 tokens）：
-# - adopt:       25K / 54K / 76K → 設定 45K（90% 案例完整保留，大型案例損失 41%）
-# - learn:       18K / 33K / 69K → 設定 45K（95% 案例完整保留，大型案例損失 35%）
-# - absorb:      19K / 32K / 59K → 設定 45K（85% 案例完整保留，大型案例損失 24%）
-# - anticipate:  19K / 32K / 59K → 設定 45K（85% 案例完整保留）
-# - transform:    8K / 29K / 54K → 設定 45K（95% 案例完整保留，大型案例損失 17%）
-# - rebound:      2K / 11K / 25K → 設定 45K（100% 案例完整保留）
-MAX_TOKENS_PER_AGENT = {
-    "absorb": 45000,      # 單 Agent 模式 - 大幅減少截斷
-    "adopt": 45000,       # 單 Agent 模式 - 大幅減少截斷
-    "transform": 45000,   # 單 Agent 模式 - 大幅減少截斷
-    "anticipate": 45000,  # 單 Agent 模式 - 大幅減少截斷
-    "rebound": 45000,     # 單 Agent 模式 - 大幅減少截斷
-    "learn": 45000,       # 單 Agent 模式 - 大幅減少截斷
-}
-
-# 預設值（向後相容）
-DEFAULT_MAX_TOKENS = 12000
-
 # --------------------------------
 # 數據結構
 # --------------------------------
+@dataclass
+class ReviewResult:
+    """評分員審核結果"""
+    dimension: str
+    original_score: float
+    # original_confidence: int # Removed/Ignored in new prompt logic, but let's keep it clean or just optional
+    # New prompt structure: status, final_score, final_reasoning, audit_note
+    status: str # APPROVED | CORRECTED
+    final_score: float
+    final_reasoning: str
+    audit_note: str
+    
+    # Legacy fields for compatibility if needed, or remove them. 
+    # The existing code expects 'is_reasonable'. Let's map 'status' to it.
+    @property
+    def is_reasonable(self) -> bool:
+        return self.status == "APPROVED"
+
+    @property # Compatible alias
+    def suggested_adjustments(self) -> str:
+        return self.audit_note
+
+    @property # Compatible alias
+    def suggested_adjustments(self) -> str:
+        return self.audit_note
 @dataclass
 class DimensionScore:
     """單一韌性能力評分"""
     dimension: str  # absorb, adopt, transform, anticipate, rebound, learn
     score: float  # 0-100
-    confidence: int  # 0=缺乏信心, 1=適度信心, 2=強烈信心
     evidence: List[str]  # 從 10-K 逐字引用的證據
     reasoning: str  # 為什麼這些證據代表該能力
+    review: Optional['ReviewResult'] = None  # 評分員審核結果
 
 @dataclass
 class ResilienceScore:
@@ -142,7 +144,6 @@ class ResilienceScore:
 
     # 整體分數
     overall_score: float = 0.0
-    overall_confidence: float = 0.0
 
     # 元數據
     agent_version: str = "1.0"
@@ -162,20 +163,16 @@ class ResilienceScore:
         }
 
         total_score = 0.0
-        total_confidence = 0.0
         count = 0
 
         for dim_name, weight in weights.items():
             dim_score = getattr(self, dim_name)
             if dim_score and dim_score.score is not None:
                 total_score += dim_score.score * weight
-                total_confidence += dim_score.confidence * weight
                 count += 1
 
         if count > 0:
             self.overall_score = round(total_score, 2)
-            # Average confidence (0-2 scale)
-            self.overall_confidence = round(total_confidence, 2)
 
     def to_dict(self) -> Dict:
         """轉換為字典"""
@@ -276,6 +273,7 @@ SYSTEM_PROMPT_ANTICIPATE = load_prompt("anticipate")
 SYSTEM_PROMPT_REBOUND = load_prompt("rebound")
 
 SYSTEM_PROMPT_LEARN = load_prompt("learn")
+SYSTEM_PROMPT_AUDITOR = load_prompt("Auditor") # Load the new Auditor prompt
 
 # --------------------------------
 # Helper Functions
@@ -394,7 +392,7 @@ def parse_json_response(response: str) -> Optional[Dict]:
         pass
 
     # 提取 JSON code block
-    json_match = re.search(r'```json\s*(\\{.*?\\})\s*```', response, re.DOTALL)
+    json_match = re.search(r'```json\s*(.*?)```', response, re.DOTALL)
     if json_match:
         try:
             return json.loads(json_match.group(1))
@@ -409,8 +407,78 @@ def parse_json_response(response: str) -> Optional[Dict]:
         except:
             pass
 
-    logger.error("無法解析 JSON")
-    return None
+# --------------------------------
+# JSON Schema / Grammar
+# --------------------------------
+AGENT1_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "evidence": {
+            "type": "array",
+            "items": {"type": "string"}
+        },
+        "reasoning": {"type": "string"},
+        "score": {"type": "number", "minimum": 0, "maximum": 4}
+    },
+    "required": ["evidence", "reasoning", "score"]
+}
+
+_AGENT1_GRAMMAR = None
+
+def get_agent1_grammar():
+    """Lazy load grammar"""
+    global _AGENT1_GRAMMAR
+    if _AGENT1_GRAMMAR is None:
+        try:
+            # Re-import locally if needed or just use global
+            from llama_cpp import LlamaGrammar
+            json_schema = json.dumps(AGENT1_SCHEMA)
+            _AGENT1_GRAMMAR = LlamaGrammar.from_json_schema(json_schema)
+            logger.info("✅ Agent 1 Grammar loaded")
+        except Exception as e:
+            logger.error(f"Failed to create grammar: {e}")
+            return None
+    return _AGENT1_GRAMMAR
+
+AUDIT_ITEM_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "status": {"type": "string", "enum": ["APPROVED", "CORRECTED"]},
+        "final_score": {"type": "number", "minimum": 0, "maximum": 4},
+        "final_reasoning": {"type": "string"},
+        "audit_note": {"type": "string"}
+    },
+    "required": ["status", "final_score", "final_reasoning", "audit_note"]
+}
+
+AUDITOR_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "ABSORB": AUDIT_ITEM_SCHEMA,
+        "ADAPT": AUDIT_ITEM_SCHEMA,
+        "TRANSFORM": AUDIT_ITEM_SCHEMA,
+        "ANTICIPATE": AUDIT_ITEM_SCHEMA,
+        "REBOUND": AUDIT_ITEM_SCHEMA,
+        "LEARN": AUDIT_ITEM_SCHEMA
+    },
+    "required": ["ABSORB", "ADAPT", "TRANSFORM", "ANTICIPATE", "REBOUND", "LEARN"]
+}
+
+_AUDITOR_GRAMMAR = None
+
+def get_auditor_grammar():
+    """Lazy load Auditor grammar"""
+    global _AUDITOR_GRAMMAR
+    if _AUDITOR_GRAMMAR is None:
+        try:
+            from llama_cpp import LlamaGrammar
+            json_schema = json.dumps(AUDITOR_SCHEMA)
+            _AUDITOR_GRAMMAR = LlamaGrammar.from_json_schema(json_schema)
+            logger.info("✅ Auditor Grammar loaded")
+        except Exception as e:
+            logger.error(f"Failed to create Auditor grammar: {e}")
+            return None
+    return _AUDITOR_GRAMMAR
 
 # --------------------------------
 # 六個獨立的 Agent 評分函數
@@ -445,37 +513,17 @@ def agent_absorb(
 Now evaluate the ABSORB capability and output JSON:<|end|><|start|>assistant<|channel|>analysis<|message|><|end|><|start|>assistant<|channel|>
 """
 
-    try:
-        response = llm_wrapper.generate(
-            prompt,
-            override_params={
-                "temperature": 0.1,
-                "max_tokens": 1500,
-                "stop": ["}```", "\n\n\n"],
-            }
-        )
-
-        logger.info(f"Absorb 回應長度: {len(response)} 字元")
-        logger.info(f"Absorb 回應前 500 字: {response[:500]}")
-        logger.info(f"Absorb 回應後 500 字: {response[-500:]}")
-
-        result = parse_json_response(response)
-        if not result:
-            logger.error("Absorb Agent JSON 解析失敗")
-            logger.error(f"完整回應:\n{response}")
-            return None
-
-        return DimensionScore(
-            dimension="absorb",
-            score=float(result.get("score", 0)),
-            confidence=int(result.get("confidence", 0)),
-            evidence=result.get("evidence", []),
-            reasoning=result.get("reasoning", "")
-        )
-
-    except Exception as e:
-        logger.error(f"Absorb Agent 失敗: {e}")
+    result = run_agent1_with_retry(llm_wrapper, prompt, relevant_context, "absorb", grammar=get_agent1_grammar())
+    
+    if not result:
         return None
+
+    return DimensionScore(
+        dimension="absorb",
+        score=float(result.get("score", 0)),
+        evidence=result.get("evidence", []),
+        reasoning=result.get("reasoning", "")
+    )
 
 def agent_adopt(llm_wrapper: LLMWrapper, company: str, year: int, report_data: Dict[str, str]) -> Optional[DimensionScore]:
     """Adopt Agent - 評估適應衝擊能力"""
@@ -500,23 +548,15 @@ def agent_adopt(llm_wrapper: LLMWrapper, company: str, year: int, report_data: D
 
 Now evaluate the ADOPT capability and output JSON:<|end|><|start|>assistant<|channel|>analysis<|message|><|end|><|start|>assistant<|channel|>
 """
+    result = run_agent1_with_retry(llm_wrapper, prompt, relevant_context, "adopt", grammar=get_agent1_grammar())
+    if not result: return None
 
-    try:
-        response = llm_wrapper.generate(prompt, override_params={"temperature": 0.1, "max_tokens": 2048})
-        result = parse_json_response(response)
-        if not result:
-            return None
-
-        return DimensionScore(
-            dimension="adopt",
-            score=float(result.get("score", 0)),
-            confidence=int(result.get("confidence", 0)),
-            evidence=result.get("evidence", []),
-            reasoning=result.get("reasoning", "")
-        )
-    except Exception as e:
-        logger.error(f"Adopt Agent 失敗: {e}")
-        return None
+    return DimensionScore(
+        dimension="adopt",
+        score=float(result.get("score", 0)),
+        evidence=result.get("evidence", []),
+        reasoning=result.get("reasoning", "")
+    )
 
 def agent_transform(llm_wrapper: LLMWrapper, company: str, year: int, report_data: Dict[str, str]) -> Optional[DimensionScore]:
     """Transform Agent - 評估轉換衝擊能力"""
@@ -541,23 +581,15 @@ def agent_transform(llm_wrapper: LLMWrapper, company: str, year: int, report_dat
 
 Now evaluate the TRANSFORM capability and output JSON:<|end|><|start|>assistant<|channel|>analysis<|message|><|end|><|start|>assistant<|channel|>
 """
+    result = run_agent1_with_retry(llm_wrapper, prompt, relevant_context, "transform", grammar=get_agent1_grammar())
+    if not result: return None
 
-    try:
-        response = llm_wrapper.generate(prompt, override_params={"temperature": 0.1, "max_tokens": 2048})
-        result = parse_json_response(response)
-        if not result:
-            return None
-
-        return DimensionScore(
-            dimension="transform",
-            score=float(result.get("score", 0)),
-            confidence=int(result.get("confidence", 0)),
-            evidence=result.get("evidence", []),
-            reasoning=result.get("reasoning", "")
-        )
-    except Exception as e:
-        logger.error(f"Transform Agent 失敗: {e}")
-        return None
+    return DimensionScore(
+        dimension="transform",
+        score=float(result.get("score", 0)),
+        evidence=result.get("evidence", []),
+        reasoning=result.get("reasoning", "")
+    )
 
 def agent_anticipate(llm_wrapper: LLMWrapper, company: str, year: int, report_data: Dict[str, str]) -> Optional[DimensionScore]:
     """Anticipate Agent - 評估預測能力"""
@@ -582,23 +614,15 @@ def agent_anticipate(llm_wrapper: LLMWrapper, company: str, year: int, report_da
 
 Now evaluate the ANTICIPATE capability and output JSON:<|end|><|start|>assistant<|channel|>analysis<|message|><|end|><|start|>assistant<|channel|>
 """
+    result = run_agent1_with_retry(llm_wrapper, prompt, relevant_context, "anticipate", grammar=get_agent1_grammar())
+    if not result: return None
 
-    try:
-        response = llm_wrapper.generate(prompt, override_params={"temperature": 0.1, "max_tokens": 2048})
-        result = parse_json_response(response)
-        if not result:
-            return None
-
-        return DimensionScore(
-            dimension="anticipate",
-            score=float(result.get("score", 0)),
-            confidence=int(result.get("confidence", 0)),
-            evidence=result.get("evidence", []),
-            reasoning=result.get("reasoning", "")
-        )
-    except Exception as e:
-        logger.error(f"Anticipate Agent 失敗: {e}")
-        return None
+    return DimensionScore(
+        dimension="anticipate",
+        score=float(result.get("score", 0)),
+        evidence=result.get("evidence", []),
+        reasoning=result.get("reasoning", "")
+    )
 
 def agent_rebound(llm_wrapper: LLMWrapper, company: str, year: int, report_data: Dict[str, str]) -> Optional[DimensionScore]:
     """Rebound Agent - 評估反彈能力"""
@@ -623,23 +647,15 @@ def agent_rebound(llm_wrapper: LLMWrapper, company: str, year: int, report_data:
 
 Now evaluate the REBOUND capability and output JSON:<|end|><|start|>assistant<|channel|>analysis<|message|><|end|><|start|>assistant<|channel|>
 """
+    result = run_agent1_with_retry(llm_wrapper, prompt, relevant_context, "rebound", grammar=get_agent1_grammar())
+    if not result: return None
 
-    try:
-        response = llm_wrapper.generate(prompt, override_params={"temperature": 0.1, "max_tokens": 2048})
-        result = parse_json_response(response)
-        if not result:
-            return None
-
-        return DimensionScore(
-            dimension="rebound",
-            score=float(result.get("score", 0)),
-            confidence=int(result.get("confidence", 0)),
-            evidence=result.get("evidence", []),
-            reasoning=result.get("reasoning", "")
-        )
-    except Exception as e:
-        logger.error(f"Rebound Agent 失敗: {e}")
-        return None
+    return DimensionScore(
+        dimension="rebound",
+        score=float(result.get("score", 0)),
+        evidence=result.get("evidence", []),
+        reasoning=result.get("reasoning", "")
+    )
 
 def agent_learn(llm_wrapper: LLMWrapper, company: str, year: int, report_data: Dict[str, str]) -> Optional[DimensionScore]:
     """Learn Agent - 評估學習能力"""
@@ -665,22 +681,15 @@ def agent_learn(llm_wrapper: LLMWrapper, company: str, year: int, report_data: D
 Now evaluate the LEARN capability and output JSON:<|end|><|start|>assistant<|channel|>analysis<|message|><|end|><|start|>assistant<|channel|>
 """
 
-    try:
-        response = llm_wrapper.generate(prompt, override_params={"temperature": 0.1, "max_tokens": 2048})
-        result = parse_json_response(response)
-        if not result:
-            return None
+    result = run_agent1_with_retry(llm_wrapper, prompt, relevant_context, "learn", grammar=get_agent1_grammar())
+    if not result: return None
 
-        return DimensionScore(
-            dimension="learn",
-            score=float(result.get("score", 0)),
-            confidence=int(result.get("confidence", 0)),
-            evidence=result.get("evidence", []),
-            reasoning=result.get("reasoning", "")
-        )
-    except Exception as e:
-        logger.error(f"Learn Agent 失敗: {e}")
-        return None
+    return DimensionScore(
+        dimension="learn",
+        score=float(result.get("score", 0)),
+        evidence=result.get("evidence", []),
+        reasoning=result.get("reasoning", "")
+    )
 
 # --------------------------------
 # 主評分函數
@@ -690,7 +699,8 @@ def score_resilience(
     llm_wrapper: LLMWrapper,
     company: str,
     year: int,
-    report_data: Dict[str, str]
+    report_data: Dict[str, str],
+    enable_reviewer: bool = True
 ) -> Optional[ResilienceScore]:
     """
     使用 6 個獨立 Agent 評估數位韌性
@@ -716,49 +726,66 @@ def score_resilience(
         timestamp=time.strftime("%Y-%m-%d %H:%M:%S")
     )
 
-    # 單 Agent 執行模式：每個 Agent 獨立載入/卸載模型
+    # 單 Agent 執行模式（優化版）：一次性載入模型，中間使用 reset_cache() 清空 Context
     # 優點：
-    # 1. 每個 Agent 都能使用完整 64K context（幾乎無截斷）
-    # 2. 無 KV cache 累積問題（每次重新載入模型）
-    # 3. GPU 記憶體穩定（不會因多個 Agent 累積而 OOM）
-    #
-    # 成本：
-    # - 6 次模型載入/卸載（每次 ~1.5s，總共 ~9s）
-    # - 總處理時間增加約 10-20%
-    #
-    # Trade-off: 時間換質量（無截斷 vs 略慢）
+    # 1. 減少 6 次模型載入/卸載 IO 時間（節省 ~10s）
+    # 2. reset_cache() 瞬間清空 KV cache，確保 Agent 間 Context 隔離
+    # 3. 保持單 Agent 內存優勢 (Context 不會累積)
 
-    agent_functions = [
-        ("absorb", agent_absorb),
-        ("adopt", agent_adopt),
-        ("transform", agent_transform),
-        ("anticipate", agent_anticipate),
-        ("rebound", agent_rebound),
-        ("learn", agent_learn),
-    ]
-
-    for agent_name, agent_func in agent_functions:
-        logger.info(f"🔄 執行 {agent_name.upper()} Agent（單獨載入模型）")
-
-        # 1. 載入模型（每個 Agent 獨立載入）
+    try:
+        # 1. 載入模型（一次性）
         if not llm_wrapper.load_model():
-            logger.error(f"❌ {agent_name} Agent 模型載入失敗")
-            setattr(score_obj, agent_name, None)
-            continue
+            logger.error("❌ 模型載入失敗，終止評分")
+            return score_obj
 
-        # 2. 執行 Agent
-        try:
-            result = agent_func(llm_wrapper, company, year, report_data)
-            setattr(score_obj, agent_name, result)
-        except Exception as e:
-            logger.error(f"❌ {agent_name} Agent 執行失敗: {e}")
-            setattr(score_obj, agent_name, None)
+        agent_functions = [
+            ("absorb", agent_absorb),
+            ("adopt", agent_adopt),
+            ("transform", agent_transform),
+            ("anticipate", agent_anticipate),
+            ("rebound", agent_rebound),
+            ("learn", agent_learn),
+        ]
 
-        # 3. 卸載模型（釋放 GPU 記憶體）
+        for agent_name, agent_func in agent_functions:
+            logger.info(f"🔄 執行 {agent_name.upper()} Agent")
+
+            # 2. 執行 Agent
+            try:
+                result = agent_func(llm_wrapper, company, year, report_data)
+                setattr(score_obj, agent_name, result)
+            except Exception as e:
+                logger.error(f"❌ {agent_name} Agent 執行失敗: {e}")
+                setattr(score_obj, agent_name, None)
+
+            # 3. 清空 Cache (Critical for isolation)
+            llm_wrapper.reset_cache()
+            
+            # 強制回收 Python GC (Selection: Optional safety)
+            # import gc; gc.collect()
+
+        # 計算整體分數
+        score_obj.calculate_overall()
+
+        # 4. 執行評分員審核 (Reviewer Agent)
+        if enable_reviewer:
+            logger.info("🔄 執行 Reviewer Agent（審核所有評分）")
+            try:
+                reviews = review_all_scores(llm_wrapper, score_obj)
+                
+                # 將審核結果填回 score_obj
+                for dim_name, review_result in reviews.items():
+                    dim_score = getattr(score_obj, dim_name)
+                    if dim_score:
+                        dim_score.review = review_result
+            except Exception as e:
+                logger.error(f"❌ Reviewer Agent 執行失敗: {e}")
+        else:
+            logger.info("ℹ️ 跳過 Reviewer Agent (使用者設定)")
+
+    finally:
+        # 5. 確保最後卸載模型
         llm_wrapper.unload_model()
-
-    # 計算整體分數
-    score_obj.calculate_overall()
 
     # 記錄處理時間
     score_obj.processing_time = time.time() - start_time
@@ -792,137 +819,109 @@ def save_score_to_file(score: ResilienceScore, output_dir: Optional[Path] = None
 # 評分員 Agent (Reviewer)
 # --------------------------------
 
-@dataclass
-class ReviewResult:
-    """評分員審核結果"""
-    dimension: str
-    original_score: float
-    original_confidence: int
-    is_reasonable: bool  # 評分是否合理
-    suggested_adjustments: str  # 建議調整
-    review_confidence: int  # 審核者的信心 (0-2)
-
-SYSTEM_PROMPT_REVIEWER = """You are a **Quality Assurance Analyst** reviewing digital resilience scores.
-
-## Your Task
-Review the scoring for a specific resilience capability and determine if:
-1. The score (0-100) is justified by the evidence
-2. The confidence level (0-2) is appropriate
-3. The reasoning is logical
-
-## Scoring Guidelines
-- **Evidence-Score Match**: Does evidence support the score?
-  - Strong evidence + high score = reasonable
-  - Weak evidence + high score = unreasonable
-  - No evidence + low score = reasonable
-
-- **Confidence Level Check**:
-  - 0 (缺乏): Should have empty evidence list
-  - 1 (適度): Should have 2-5 pieces of evidence, some uncertainty
-  - 2 (強烈): Should have 4+ pieces of strong evidence, clear patterns
-
-## Output Format (JSON ONLY):
-{
-  "is_reasonable": true,
-  "suggested_adjustments": "Brief suggestion or 'None' if reasonable",
-  "review_confidence": 2
-}
-
-### CRITICAL RULES:
-- If score > 70 but evidence < 3 items → is_reasonable = false
-- If confidence = 2 but evidence < 4 items → is_reasonable = false
-- If confidence = 0 but evidence exists → is_reasonable = false
-- Output ONLY JSON, NO explanatory text
-
-Start with { and end with }."""
-
-def agent_reviewer(
-    llm_wrapper: LLMWrapper,
-    dimension_name: str,
-    dimension_score: DimensionScore,
-    report_context: str
-) -> Optional[ReviewResult]:
-    """評分員 Agent - 審核單一維度的評分"""
-    logger.info(f"=== Reviewer Agent: {dimension_name} ===")
-
-    prompt = f"""{SYSTEM_PROMPT_REVIEWER}
-
-## Dimension: {dimension_name.upper()}
-
-## Original Scoring:
-- Score: {dimension_score.score}/100
-- Confidence: {dimension_score.confidence} ({['缺乏', '適度', '強烈'][dimension_score.confidence]})
-- Evidence Count: {len(dimension_score.evidence)}
-- Evidence: {dimension_score.evidence[:3]}  # First 3 pieces
-- Reasoning: {dimension_score.reasoning}
-
-## Relevant Report Context (for verification):
-{report_context[:5000]}
-
----
-
-Review this scoring and output JSON:<|end|><|start|>assistant<|channel|>analysis<|message|><|end|><|start|>assistant<|channel|>
-"""
-
-    try:
-        response = llm_wrapper.generate(
-            prompt,
-            override_params={
-                "temperature": 0.1,
-                "max_tokens": 800,
-                "stop": ["}```", "\n\n\n"],
-            }
-        )
-
-        result = parse_json_response(response)
-        if not result:
-            logger.warning(f"Reviewer Agent failed for {dimension_name}")
-            return None
-
-        return ReviewResult(
-            dimension=dimension_name,
-            original_score=dimension_score.score,
-            original_confidence=dimension_score.confidence,
-            is_reasonable=result.get("is_reasonable", True),
-            suggested_adjustments=result.get("suggested_adjustments", "None"),
-            review_confidence=int(result.get("review_confidence", 1))
-        )
-
-    except Exception as e:
-        logger.error(f"Reviewer Agent error for {dimension_name}: {e}")
-        return None
 
 
 def review_all_scores(
     llm_wrapper: LLMWrapper,
     score: ResilienceScore,
-    report_context: str
+    # report_context: str # Unused in new prompt constraint
 ) -> Dict[str, ReviewResult]:
-    """審核所有維度的評分"""
-    logger.info("\n=== 開始評分員審核 ===")
-    reviews = {}
-
-    dimensions = [
-        ("absorb", score.absorb),
-        ("adopt", score.adopt),
-        ("transform", score.transform),
-        ("anticipate", score.anticipate),
-        ("rebound", score.rebound),
-        ("learn", score.learn),
-    ]
-
-    for dim_name, dim_score in dimensions:
+    """審核所有維度的評分 (Batch Mode)"""
+    logger.info("\n=== 開始評分員審核 (Lead Auditor Batch) ===")
+    
+    # 1. 組建 Input JSON
+    # Map lowercase dimension names to CAPS keys required by Lead Auditor
+    # Keys: ABSORB, ADAPT, TRANSFORM, ANTICIPATE, REBOUND, LEARN
+    # Note: 'adopt' in code corresponds to 'ADAPT' in standard/prompt? 
+    # Let's check the prompt instructions: "ADAPT" is one of the keys.
+    # Code uses 'adopt' for variable/capability name. I should safely map 'adopt' -> 'ADAPT'.
+    
+    mapping = {
+        "absorb": "ABSORB",
+        "adopt": "ADAPT",
+        "transform": "TRANSFORM",
+        "anticipate": "ANTICIPATE",
+        "rebound": "REBOUND",
+        "learn": "LEARN"
+    }
+    
+    input_data = {}
+    
+    for dim_lower, dim_upper in mapping.items():
+        dim_score = getattr(score, dim_lower)
         if dim_score:
-            review = agent_reviewer(llm_wrapper, dim_name, dim_score, report_context)
-            if review:
-                reviews[dim_name] = review
+            input_data[dim_upper] = {
+                "evidence": dim_score.evidence,
+                "reasoning": dim_score.reasoning,
+                "score": int(dim_score.score)
+            }
+        else:
+            # Handle missing scores gracefully? Or skip?
+            # Auditor prompt implies it receives all 6.
+            # Let's provide dummy entry if missing so Auditor can force it to 0
+            input_data[dim_upper] = {
+                "evidence": [],
+                "reasoning": "Scoring failed or missing",
+                "score": 0
+            }
 
-                # Log review result
-                status = "✅ 合理" if review.is_reasonable else "⚠️ 需調整"
-                logger.info(f"  {dim_name}: {status} - {review.suggested_adjustments}")
+    input_json_str = json.dumps(input_data, indent=2, ensure_ascii=False)
 
-    logger.info(f"\n審核完成: {len(reviews)}/6 維度")
-    return reviews
+    # 2. Construct Prompt
+    prompt = f"""{SYSTEM_PROMPT_AUDITOR}
+
+# INPUT DATA (Junior Agent Reports):
+
+{input_json_str}
+
+---
+
+Now perform the Logic & Consistency Check for all 6 capabilities and output the single JSON object:<|end|><|start|>assistant<|channel|>analysis<|message|><|end|><|start|>assistant<|channel|>
+"""
+
+    # 3. Call LLM
+    try:
+        response = llm_wrapper.generate(
+            prompt, 
+            override_params={
+                "temperature": 0.1, 
+                "max_tokens": 2000, # Increased for larger output
+                "grammar": get_auditor_grammar()
+            }
+        )
+        
+        # 4. Parse Result
+        result_json = parse_json_response(response)
+        if not result_json:
+            logger.error("❌ Lead Auditor JSON parsing failed")
+            return {}
+
+        # 5. Convert to ReviewResult objects
+        reviews = {}
+        # Map back UPPER -> lower
+        reverse_mapping = {v: k for k, v in mapping.items()}
+        
+        for key_upper, audit_data in result_json.items():
+            key_lower = reverse_mapping.get(key_upper)
+            if not key_lower:
+                continue
+                
+            reviews[key_lower] = ReviewResult(
+                dimension=key_lower,
+                original_score=input_data[key_upper]["score"],
+                status=audit_data.get("status", "UNKNOWN"),
+                final_score=float(audit_data.get("final_score", 0)),
+                final_reasoning=audit_data.get("final_reasoning", ""),
+                audit_note=audit_data.get("audit_note", "")
+            )
+            
+            logger.info(f"  {key_upper}: {audit_data.get('status')} -> {audit_data.get('final_score')} (Note: {audit_data.get('audit_note')})")
+
+        return reviews
+
+    except Exception as e:
+        logger.error(f"Lead Auditor execution failed: {e}")
+        return {}
 
 
 def test_scoring():
@@ -946,52 +945,26 @@ def test_scoring():
         score = score_resilience(wrapper, company, year, report_data)
 
         if score:
-            # 載入模型給評分員審核使用
-            if not wrapper.load_model():
-                logger.error("LLM 載入失敗（評分員）")
-                return False
-
-            # 執行評分員審核
-            report_context = prepare_report_context(report_data)
-            reviews = review_all_scores(wrapper, score, report_context)
-
             logger.info("\n=== 評分結果 ===")
             logger.info(f"公司: {score.company} ({score.year})")
             logger.info(f"整體分數: {score.overall_score:.1f}/100")
-            logger.info(f"整體信心: {score.overall_confidence:.2f} (平均值: 0=缺乏, 1=適度, 2=強烈)")
-            logger.info(f"\n六維度分數:")
+            # logger.info(f"整體信心: {score.overall_confidence:.2f} (平均值: 0=缺乏, 1=適度, 2=強烈)")
 
-            # Helper function to display dimension safely
-            def display_dim(name_zh, name_en, dim_score):
+            logger.info("\n六維度分數:")
+            for dim_name in ["absorb", "adopt", "transform", "anticipate", "rebound", "learn"]:
+                dim_score = getattr(score, dim_name)
                 if dim_score:
-                    conf_label = {0: "缺乏", 1: "適度", 2: "強烈"}[dim_score.confidence]
-                    logger.info(f"  - {name_en} ({name_zh}): {dim_score.score:.1f} (信心: {conf_label})")
+                    
+                    review_msg = ""
+                    if dim_score.review:
+                        status_icon = "✅" if dim_score.review.status == "APPROVED" else "⚠️"
+                        review_msg = f" | 審核: {status_icon}"
+                        if dim_score.review.status == "CORRECTED":
+                            review_msg += f" 建議: {dim_score.review.audit_note[:30]}..."
+
+                    logger.info(f"  - {dim_name.capitalize()}: {dim_score.score}{review_msg}")
                 else:
-                    logger.info(f"  - {name_en} ({name_zh}): N/A (評分失敗)")
-
-            display_dim("吸收", "Absorb", score.absorb)
-            display_dim("適應", "Adopt", score.adopt)
-            display_dim("轉換", "Transform", score.transform)
-            display_dim("預測", "Anticipate", score.anticipate)
-            display_dim("反彈", "Rebound", score.rebound)
-            display_dim("學習", "Learn", score.learn)
-
-            # 顯示審核摘要
-            if reviews:
-                logger.info("\n=== 評分員審核摘要 ===")
-                reasonable_count = sum(1 for r in reviews.values() if r.is_reasonable)
-                logger.info(f"總審核: {len(reviews)}/6 維度")
-                logger.info(f"合理評分: {reasonable_count}/{len(reviews)} 維度")
-
-                # 顯示需調整的維度
-                needs_adjustment = [dim for dim, r in reviews.items() if not r.is_reasonable]
-                if needs_adjustment:
-                    logger.info("\n⚠️ 需調整維度:")
-                    for dim in needs_adjustment:
-                        r = reviews[dim]
-                        logger.info(f"  - {dim}: {r.suggested_adjustments}")
-                else:
-                    logger.info("\n✅ 所有維度評分合理")
+                    logger.info(f"  - {dim_name.capitalize()}: N/A (評分失敗)")
 
             # 儲存結果
             output_path = save_score_to_file(score)
@@ -1016,11 +989,12 @@ def agent1_score_report(
     llm_wrapper: LLMWrapper,
     company: str,
     year: int,
-    report_data: Dict[str, str]
+    report_data: Dict[str, str],
+    enable_reviewer: bool = True
 ) -> Optional[ResilienceScore]:
     """
     向後相容函數 - 對應 v1.0 的 agent1_score_report
     實際調用 score_resilience
     """
-    return score_resilience(llm_wrapper, company, year, report_data)
+    return score_resilience(llm_wrapper, company, year, report_data, enable_reviewer=enable_reviewer)
 
