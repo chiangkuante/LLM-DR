@@ -14,12 +14,13 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from dataclasses import dataclass, asdict
 import time
+import os
 
 try:
-    from llama_cpp import Llama, LlamaGrammar
+    from openai import OpenAI
 except ImportError:
     raise ImportError(
-        "llama-cpp-python 未安裝。請執行: uv pip install llama-cpp-python"
+        "openai 未安裝。請執行: uv pip install openai"
     )
 
 from .utils import setup_logger, Config
@@ -30,14 +31,10 @@ logger = setup_logger(__name__)
 # --------------------------------
 # 模型配置
 # --------------------------------
-MODEL_PATH = Config.PROJECT_ROOT / "models" / "Mistral-Small-3.2-24B-Instruct-2506-Q4_K_M.gguf"
+# 注意: 模型路徑與參數現在由 llama-server 啟動腳本 (src/tools/launch_server.sh) 控制。
+# Python 端不再負責載入模型，僅負責與 Server 通訊。
 
-DEFAULT_LLM_PARAMS = {
-    "n_ctx": 30000,      # 48K context for Q4 model (conservative for 24GB GPU - 80.5% utilization, safer for large prompts)
-    "n_gpu_layers": -1,
-    "n_threads": 25,
-    "verbose": False,
-}
+# DEFAULT_LLM_PARAMS 已廢棄 (由 Server 端參數決定)
 
 DEFAULT_GEN_PARAMS = {
     "temperature": 0.1,
@@ -45,7 +42,10 @@ DEFAULT_GEN_PARAMS = {
     "stop": ["}```", "\n\n\n"],
 }
 
-MAX_TOKENS_PER_AGENT = 28000
+# 關鍵參數: 控制輸入 Prompt 的長度，避免超過 Server 的 Context Window (例如 32k)
+# 建議設定為: Server Context - Max Output - Buffer
+# 32768 - 1000 - 1000 ~= 30000 (這裡設定 28000 保守一點)
+MAX_TOKENS_PER_AGENT = 65000
 
 # --------------------------------
 # Agent 章節分配配置
@@ -181,70 +181,80 @@ class ResilienceScore:
 # --------------------------------
 # LLM 包裝器
 # --------------------------------
+# --------------------------------
+# LLM 包裝器 (OpenAI API Compatible)
+# --------------------------------
 class LLMWrapper:
-    """LLM 包裝器"""
+    """LLM 包裝器 (使用 OpenAI API / llama-server)"""
 
-    def __init__(self, model_path: Optional[Path] = None, llm_params: Optional[Dict] = None):
-        self.model_path = model_path or MODEL_PATH
-        self.llm_params = {**DEFAULT_LLM_PARAMS, **(llm_params or {})}
-        self.llm: Optional[Llama] = None
+    def __init__(self, base_url: str = "http://localhost:8080/v1", api_key: str = "lm-studio"):
+        self.base_url = base_url
+        self.api_key = api_key
+        self.client: Optional[OpenAI] = None
+        self.model_name = "ministral-3-14b" # Placeholder, server determines actual model
 
     def load_model(self) -> bool:
-        """載入模型"""
-        if self.llm is not None:
-            logger.info("模型已載入")
-            return True
-
+        """
+        連接到 llama-server
+        注意：這裡不再負責載入模型檔案，而是確保 Server 可連接。
+        模型載入由 llama-server 啟動參數決定。
+        """
         try:
-            logger.info(f"正在載入模型: {self.model_path}")
-            logger.info(f"LLM 參數: {self.llm_params}")
-            start_time = time.time()
-
-            self.llm = Llama(
-                model_path=str(self.model_path),
-                **self.llm_params
-            )
-
-            load_time = time.time() - start_time
-            logger.info(f"✅ 模型載入成功 (耗時 {load_time:.2f}s)")
+            logger.info(f"正在連接 LLM Server: {self.base_url}")
+            self.client = OpenAI(base_url=self.base_url, api_key=self.api_key)
+            
+            # 測試連接 (List models)
+            models = self.client.models.list()
+            logger.info(f"✅ 連接成功。可用模型: {[m.id for m in models.data]}")
             return True
 
         except Exception as e:
-            logger.error(f"模型載入失敗: {e}")
+            logger.error(f"無法連接 LLM Server: {e}")
+            logger.error("請確保已啟動: ./llama-server -m ...")
             return False
 
     def generate(self, prompt: str, override_params: Optional[Dict] = None) -> str:
         """生成回應"""
-        if self.llm is None:
-            raise RuntimeError("模型尚未載入，請先呼叫 load_model()")
+        if self.client is None:
+            raise RuntimeError("尚未連接 Server，請先呼叫 load_model()")
 
         params = {**DEFAULT_GEN_PARAMS, **(override_params or {})}
+        
+        # 移除不支援的參數
+        if "stop" in params and isinstance(params["stop"], list):
+            # OpenAI API 通常支援最多 4 個 stop sequences
+            pass
+        
+        # 移除 llama-cpp 特有參數
+        params.pop("grammar", None) 
 
         try:
-            response = self.llm(prompt, **params)
-            return response['choices'][0]['text']
+            # 使用 Completion API (llama-server 支援 /v1/completions 用於原始補全)
+            # 或者 Chat API。這裡 Prompt 是原始文字，建議用 completions。
+            response = self.client.completions.create(
+                model=self.model_name,
+                prompt=prompt,
+                max_tokens=params.get("max_tokens", 1000),
+                temperature=params.get("temperature", 0.1),
+                stop=params.get("stop", None),
+                # top_p, frequency_penalty 等可依需添加
+            )
+            return response.choices[0].text
         except Exception as e:
             logger.error(f"生成失敗: {e}")
             raise
 
     def reset_cache(self):
-        """清空 KV cache（用於大型 Agent 執行前，避免記憶體累積）"""
-        if self.llm is None:
-            logger.warning("模型尚未載入，無法清空 cache")
-            return
-
-        try:
-            self.llm.reset()
-            logger.info("🔄 KV cache 已清空")
-        except Exception as e:
-            logger.error(f"清空 KV cache 失敗: {e}")
+        """
+        Server 模式下通常不需要手動 reset context，
+        因為每個 request 是獨立的 (Stateless unless using context caching slots explicitly).
+        llama-server 會自動管理 slot。
+        """
+        pass
 
     def unload_model(self):
-        """卸載模型"""
-        if self.llm:
-            del self.llm
-            self.llm = None
-        logger.info("模型已卸載")
+        """Server 模式下無法由 Client 卸載模型"""
+        pass
 
 # --------------------------------
 # 六個韌性能力的 System Prompts
@@ -407,78 +417,20 @@ def parse_json_response(response: str) -> Optional[Dict]:
         except:
             pass
 
-# --------------------------------
-# JSON Schema / Grammar
-# --------------------------------
-AGENT1_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "evidence": {
-            "type": "array",
-            "items": {"type": "string"}
-        },
-        "reasoning": {"type": "string"},
-        "score": {"type": "number", "minimum": 0, "maximum": 4}
-    },
-    "required": ["evidence", "reasoning", "score"]
-}
 
-_AGENT1_GRAMMAR = None
+# --------------------------------
+# JSON Schema / Grammar (Disabled for OpenAI API)
+# --------------------------------
+# OpenAI API does not support GBNF grammars directly in the same way.
+# We will rely on prompt engineering and json_repair.
 
 def get_agent1_grammar():
-    """Lazy load grammar"""
-    global _AGENT1_GRAMMAR
-    if _AGENT1_GRAMMAR is None:
-        try:
-            # Re-import locally if needed or just use global
-            from llama_cpp import LlamaGrammar
-            json_schema = json.dumps(AGENT1_SCHEMA)
-            _AGENT1_GRAMMAR = LlamaGrammar.from_json_schema(json_schema)
-            logger.info("✅ Agent 1 Grammar loaded")
-        except Exception as e:
-            logger.error(f"Failed to create grammar: {e}")
-            return None
-    return _AGENT1_GRAMMAR
-
-AUDIT_ITEM_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "status": {"type": "string", "enum": ["APPROVED", "CORRECTED"]},
-        "final_score": {"type": "number", "minimum": 0, "maximum": 4},
-        "final_reasoning": {"type": "string"},
-        "audit_note": {"type": "string"}
-    },
-    "required": ["status", "final_score", "final_reasoning", "audit_note"]
-}
-
-AUDITOR_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "ABSORB": AUDIT_ITEM_SCHEMA,
-        "ADAPT": AUDIT_ITEM_SCHEMA,
-        "TRANSFORM": AUDIT_ITEM_SCHEMA,
-        "ANTICIPATE": AUDIT_ITEM_SCHEMA,
-        "REBOUND": AUDIT_ITEM_SCHEMA,
-        "LEARN": AUDIT_ITEM_SCHEMA
-    },
-    "required": ["ABSORB", "ADAPT", "TRANSFORM", "ANTICIPATE", "REBOUND", "LEARN"]
-}
-
-_AUDITOR_GRAMMAR = None
+    """Grammar disabled for server mode"""
+    return None
 
 def get_auditor_grammar():
-    """Lazy load Auditor grammar"""
-    global _AUDITOR_GRAMMAR
-    if _AUDITOR_GRAMMAR is None:
-        try:
-            from llama_cpp import LlamaGrammar
-            json_schema = json.dumps(AUDITOR_SCHEMA)
-            _AUDITOR_GRAMMAR = LlamaGrammar.from_json_schema(json_schema)
-            logger.info("✅ Auditor Grammar loaded")
-        except Exception as e:
-            logger.error(f"Failed to create Auditor grammar: {e}")
-            return None
-    return _AUDITOR_GRAMMAR
+    """Grammar disabled for server mode"""
+    return None
 
 # --------------------------------
 # 六個獨立的 Agent 評分函數
