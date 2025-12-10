@@ -10,8 +10,8 @@ logger = logging.getLogger(__name__)
 # Default Configuration per GEMINI.md 
 # DEFAULT_REPO_ID = "unsloth/gpt-oss-20b-GGUF" # Assumed based on file name match, verify if needed
 # DEFAULT_FILENAME = "gpt-oss-20b-Q8_0.gguf"
-DEFAULT_REPO_ID = "unsloth/gemma-3-27b-it-qat-GGUF" # Assumed based on file name match, verify if needed
-DEFAULT_FILENAME = "gemma-3-27b-it-qat-Q2_K_L.gguf"
+DEFAULT_REPO_ID = "unsloth/Ministral-3-14B-Instruct-2512-GGUF" # Assumed based on file name match, verify if needed
+DEFAULT_FILENAME = "Ministral-3-14B-Instruct-2512-UD-IQ1_S.gguf"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_MODEL_DIR = PROJECT_ROOT / "models"
 

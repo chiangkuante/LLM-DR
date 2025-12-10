@@ -33,7 +33,7 @@ logger = setup_logger(__name__)
 MODEL_PATH = Config.PROJECT_ROOT / "models" / "Mistral-Small-3.2-24B-Instruct-2506-Q4_K_M.gguf"
 
 DEFAULT_LLM_PARAMS = {
-    "n_ctx": 32000,      # 48K context for Q4 model (conservative for 24GB GPU - 80.5% utilization, safer for large prompts)
+    "n_ctx": 30000,      # 48K context for Q4 model (conservative for 24GB GPU - 80.5% utilization, safer for large prompts)
     "n_gpu_layers": -1,
     "n_threads": 25,
     "verbose": False,
@@ -41,11 +41,11 @@ DEFAULT_LLM_PARAMS = {
 
 DEFAULT_GEN_PARAMS = {
     "temperature": 0.1,
-    "max_tokens": 4096,
+    "max_tokens": 1000,
     "stop": ["}```", "\n\n\n"],
 }
 
-MAX_TOKENS_PER_AGENT = 27000
+MAX_TOKENS_PER_AGENT = 28000
 
 # --------------------------------
 # Agent 章節分配配置
@@ -510,7 +510,9 @@ def agent_absorb(
 
 ---
 
-Now evaluate the ABSORB capability and output JSON:<|end|><|start|>assistant<|channel|>analysis<|message|><|end|><|start|>assistant<|channel|>
+Now evaluate the ABSORB capability and output JSON.
+IMPORTANT: Provide ONLY ONE sentence of evidence and ONLY ONE sentence of reasoning.
+<|end|><|start|>assistant<|channel|>analysis<|message|><|end|><|start|>assistant<|channel|>
 """
 
     result = run_agent1_with_retry(llm_wrapper, prompt, relevant_context, "absorb", grammar=get_agent1_grammar())
@@ -546,7 +548,9 @@ def agent_adopt(llm_wrapper: LLMWrapper, company: str, year: int, report_data: D
 
 ---
 
-Now evaluate the ADOPT capability and output JSON:<|end|><|start|>assistant<|channel|>analysis<|message|><|end|><|start|>assistant<|channel|>
+Now evaluate the ADOPT capability and output JSON.
+IMPORTANT: Provide ONLY ONE sentence of evidence and ONLY ONE sentence of reasoning.
+<|end|><|start|>assistant<|channel|>analysis<|message|><|end|><|start|>assistant<|channel|>
 """
     result = run_agent1_with_retry(llm_wrapper, prompt, relevant_context, "adopt", grammar=get_agent1_grammar())
     if not result: return None
@@ -579,7 +583,9 @@ def agent_transform(llm_wrapper: LLMWrapper, company: str, year: int, report_dat
 
 ---
 
-Now evaluate the TRANSFORM capability and output JSON:<|end|><|start|>assistant<|channel|>analysis<|message|><|end|><|start|>assistant<|channel|>
+Now evaluate the TRANSFORM capability and output JSON.
+IMPORTANT: Provide ONLY ONE sentence of evidence and ONLY ONE sentence of reasoning.
+<|end|><|start|>assistant<|channel|>analysis<|message|><|end|><|start|>assistant<|channel|>
 """
     result = run_agent1_with_retry(llm_wrapper, prompt, relevant_context, "transform", grammar=get_agent1_grammar())
     if not result: return None
@@ -612,7 +618,9 @@ def agent_anticipate(llm_wrapper: LLMWrapper, company: str, year: int, report_da
 
 ---
 
-Now evaluate the ANTICIPATE capability and output JSON:<|end|><|start|>assistant<|channel|>analysis<|message|><|end|><|start|>assistant<|channel|>
+Now evaluate the ANTICIPATE capability and output JSON.
+IMPORTANT: Provide ONLY ONE sentence of evidence and ONLY ONE sentence of reasoning.
+<|end|><|start|>assistant<|channel|>analysis<|message|><|end|><|start|>assistant<|channel|>
 """
     result = run_agent1_with_retry(llm_wrapper, prompt, relevant_context, "anticipate", grammar=get_agent1_grammar())
     if not result: return None
@@ -645,7 +653,9 @@ def agent_rebound(llm_wrapper: LLMWrapper, company: str, year: int, report_data:
 
 ---
 
-Now evaluate the REBOUND capability and output JSON:<|end|><|start|>assistant<|channel|>analysis<|message|><|end|><|start|>assistant<|channel|>
+Now evaluate the REBOUND capability and output JSON.
+IMPORTANT: Provide ONLY ONE sentence of evidence and ONLY ONE sentence of reasoning.
+<|end|><|start|>assistant<|channel|>analysis<|message|><|end|><|start|>assistant<|channel|>
 """
     result = run_agent1_with_retry(llm_wrapper, prompt, relevant_context, "rebound", grammar=get_agent1_grammar())
     if not result: return None
@@ -678,7 +688,9 @@ def agent_learn(llm_wrapper: LLMWrapper, company: str, year: int, report_data: D
 
 ---
 
-Now evaluate the LEARN capability and output JSON:<|end|><|start|>assistant<|channel|>analysis<|message|><|end|><|start|>assistant<|channel|>
+Now evaluate the LEARN capability and output JSON.
+IMPORTANT: Provide ONLY ONE sentence of evidence and ONLY ONE sentence of reasoning.
+<|end|><|start|>assistant<|channel|>analysis<|message|><|end|><|start|>assistant<|channel|>
 """
 
     result = run_agent1_with_retry(llm_wrapper, prompt, relevant_context, "learn", grammar=get_agent1_grammar())
@@ -876,7 +888,9 @@ def review_all_scores(
 
 ---
 
-Now perform the Logic & Consistency Check for all 6 capabilities and output the single JSON object:<|end|><|start|>assistant<|channel|>analysis<|message|><|end|><|start|>assistant<|channel|>
+Now perform the Logic & Consistency Check for all 6 capabilities and output the single JSON object.
+IMPORTANT: Provide ONLY ONE sentence for 'audit_note' and 'final_reasoning'.
+<|end|><|start|>assistant<|channel|>analysis<|message|><|end|><|start|>assistant<|channel|>
 """
 
     # 3. Call LLM

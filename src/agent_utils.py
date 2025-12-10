@@ -185,14 +185,12 @@ def run_agent1_with_retry(
                 # Next attempt will use a stricter prompt
                 if attempt < max_retries:
                     # Tiered limits
-                    if attempt == 0:
-                         limit_n = 2
-                    else:
-                         limit_n = 1
+                    # Always limit to 1 if truncation occurs, to ensure valid JSON and speed
+                    limit_n = 1
                     
                     truncation_instruction = (
                         f"\n\nIMPORTANT: Your previous output was truncated. "
-                        f"Please list AT MOST {limit_n} piece(s) of evidence to ensure the JSON is valid."
+                        f"Please list AT MOST {limit_n} piece(s) of evidence (one sentence only) to ensure the JSON is valid."
                     )
                     
                     if truncation_instruction not in prompt:

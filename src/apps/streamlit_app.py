@@ -344,7 +344,7 @@ def main():
                     "Temperature",
                     min_value=0.0,
                     max_value=1.0,
-                    value=0.2,
+                    value=0.1,
                     step=0.1,
                     help="較低溫度 (0.1-0.3) 提供更一致的評分"
                 )
@@ -353,7 +353,7 @@ def main():
                     "Max Tokens",
                     min_value=1000,
                     max_value=4096,
-                    value=3000,
+                    value=4096,
                     step=500,
                     help="生成評分的最大 token 數"
                 )
@@ -389,7 +389,7 @@ def main():
                 # 跳過已完成的選項
                 skip_completed = st.checkbox(
                     "跳過已評分的報告",
-                    value=True,
+                    value=False,
                     help="啟用後將自動跳過已有評分結果的報告"
                 )
 
