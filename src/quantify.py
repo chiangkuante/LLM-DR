@@ -38,14 +38,14 @@ logger = setup_logger(__name__)
 
 DEFAULT_GEN_PARAMS = {
     "temperature": 0.1,
-    "max_tokens": 1000,
+    "max_tokens": 2000,
     "stop": ["}```", "\n\n\n"],
 }
 
 # 關鍵參數: 控制輸入 Prompt 的長度，避免超過 Server 的 Context Window (例如 32k)
 # 建議設定為: Server Context - Max Output - Buffer
 # 32768 - 1000 - 1000 ~= 30000 (這裡設定 28000 保守一點)
-MAX_TOKENS_PER_AGENT = 65000
+MAX_TOKENS_PER_AGENT = 64000
 
 # --------------------------------
 # Agent 章節分配配置

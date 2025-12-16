@@ -16,7 +16,7 @@ This system uses a local LLM to analyze SEC 10-K annual reports from S&P 500 com
 - **Package Management**: `uv` (必須使用 `uv lock` 確保依賴一致性)
 - **UI**: Streamlit (multi-page architecture)
 - **LLM Framework**: LangChain
-- **Inference Engine**: llama-cpp-python with CUDA GPU acceleration
+- **Inference Engine**: llama-server (OpenAI Compatible API) with CUDA acceleration
 - **Model**: gpt-oss-20b-Q8_0.gguf (128K context window)
 - **Language**: Python 3.x
 
@@ -57,7 +57,7 @@ from preprocess import process_html_file
 
 **Current Status (2025-11-17):**
 - Phase 0 & 1: Complete (downloader + preprocessing)
-- Phase 2: In development (quantification system)
+- Phase 2: Active (Quantification System v3)
 - Phase 3: Planned (Streamlit enhancements)
 
 **Phase 1: Preprocessing** (`preprocess.py` → `src/preprocess.py`)
@@ -67,15 +67,18 @@ from preprocess import process_html_file
 - Uses BeautifulSoup + regex patterns to identify and extract sections
 - **Critical**: Regex patterns avoid false positives (e.g., Item 10/12 vs Item 1)
 
-**Phase 2: Quantification** (`src/quantify.py` - TO BE BUILT)
-- **Key Architecture Change**: NO TEXT CHUNKING
-- Processes entire annual reports in one pass (利用 128K context window)
-- Multi-Agent System:
-  - **Agent 1 (Scorer)**: Evaluates full report, outputs section scores + overall score
-  - **Agent 2 (Reviewer)**: Validates Agent 1's assessment for consistency
+**Phase 2: Quantification** (`src/quantify.py`)
+- **Combined Architecture**: Smart Context Selection + 128K Window
+- **Multi-Agent System (6+1 Agents)**:
+  - **6 Domain Agents**: Absorb, Adopt, Transform, Anticipate, Rebound, Learn (Independent scoring)
+  - **1 Reviewer Agent**: Validates all scores for consistency and evidence quality
+- **Inference Strategy**:
+  - Uses `llama-server` (server-client architecture) for stability
+  - **Context Isolation**: Uses `reset_cache()` between agents to prevent attention drift
+  - **Robustness**: Implements `json_repair` and adaptive retry logic for JSON parsing
 - Input: `data/10k_cleaned/*.json` (one company-year at a time)
 - Output: `data/scores/` with structured scoring + reasoning
-- Processing: 444 companies × 10 years = 4440 inference calls (~37-74 hours total)
+- Processing: Single company (10 years) takes ~10 mins per run
 
 **Phase 3: Streamlit Integration**
 - Build UI framework FIRST (in Phase 0) before backend implementation
@@ -111,7 +114,7 @@ project_root/
 │   │   └── sec_edgar_cli.py
 │   ├── downloader.py
 │   ├── preprocess.py
-│   ├── quantify.py                    # TODO: Phase 2 ongoing
+│   ├── quantify.py                    # Core Scoring Logic (6 Agents + Reviewer)
 │   ├── quantify_v1.py                 # Legacy two-stage scoring
 │   ├── quantify_v2_backup.py
 │   └── utils.py                       # Logging, config
@@ -126,17 +129,12 @@ project_root/
 
 ### Critical Implementation Notes
 
-#### LLM Configuration (llama-cpp-python)
-```python
-# MUST set for CUDA acceleration
-n_gpu_layers=-1  # Use all GPU layers
+#### LLM Configuration (llama-server)
+- **Startup**: Managed via `src/tools/launch_server.sh`
+- **Context**: 128K (gemma-2-27b / gpt-oss-20b)
+- **Server Flags**: `-c 128000 -ngl 99 --parallel 1`
+- **Client**: Standard OpenAI API client (`src/utils.py`)
 
-# Context window
-n_ctx=128000     # 128K tokens to fit entire annual reports
-
-# Scoring consistency
-temperature=0.1-0.3  # Low for consistent scoring
-```
 
 #### Path Handling
 - **Always use `pathlib.Path`** for cross-platform compatibility
@@ -157,26 +155,19 @@ temperature=0.1-0.3  # Low for consistent scoring
 
 ### Multi-Agent Scoring System (Core Logic)
 
-**Agent 1 Prompt Structure:**
+**Agent Prompt Structure (e.g., Absorb Agent):**
 ```
-你是評估企業數位韌性的專家分析師...
-[Few-shot 範例]
-評估此公司的 10-K 年報（包含所有章節）並提供:
-1. 各章節分數 (Item 1, 1A, 7, 7A, 9A, Cybersecurity, ESG)
-2. 整體數位韌性分數 (0-100)
-3. 關鍵證據
-4. 評分推理
-5. 信心水準
+You are an expert analyst...
+[Context limited to: Item 1A, Item 7, etc.]
+Evaluate ABSORB capability...
+Output JSON with: score, evidence, reasoning
 ```
 
-**Agent 2 Prompt Structure:**
+**Reviewer Agent Structure:**
 ```
-審查以下數位韌性評估...
-驗證:
-1. 分數是否有證據支持？
-2. 是否有遺漏的指標？
-3. 是否有分數膨脹/緊縮？
-4. 章節分數與整體分數是否一致？
+Review the following scores...
+Verify evidence quality and logic consistency.
+Output: APPROVED or CORRECTED with final score.
 ```
 
 **Output Format:**
@@ -214,13 +205,14 @@ temperature=0.1-0.3  # Low for consistent scoring
 ### Dependencies to Add (pyproject.toml)
 ```toml
 langchain
-llama-cpp-python[cuda]
+openai
 streamlit
 pandas
 beautifulsoup4
 lxml
 tqdm
 plotly
+json_repair
 ```
 
 ### Code Style Guidelines (from plan.md)
@@ -229,11 +221,11 @@ plotly
 - Consider LLM context window limits in implementations
 - Notebooks should import from `src/` modules for consistency
 
-## Current Development Priority (Week 1)
+## Current Development Priority (Phase 3)
 
-1. **Project restructuring**: Move files to `src/` directory
-2. **Dependency setup**: Create `pyproject.toml` with `uv`
-3. **Streamlit framework**: Build `app.py` with multi-page structure FIRST
-4. **Integration**: Connect preprocessing to Streamlit UI
+1. **Data Analysis**: Analyze Phase 2 quantification results (`notebooks/`)
+2. **Streamlit Visualization**: Build advanced charts for multi-year trends
+3. **Optimizing**: Fine-tune Agent prompts and context selection
+4. **Reporting**: Generate aggregate reports for S&P 500
 
 Refer to `AI_todo.md` for detailed task breakdown and `plan.md` for original specifications.
